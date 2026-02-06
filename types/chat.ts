@@ -40,15 +40,28 @@ export interface MultimodalMessage extends BaseMessage {
 export type Message = TextMessage | MultimodalMessage;
 
 /**
+ * User Type (for authentication)
+ */
+
+export interface User {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+}
+
+/**
  * Session Type
  */
 
 export interface Session {
   id: string;
   title: string;
+  userId?: string; // Optional - links session to authenticated user
   createdAt: Date;
   lastUpdated: Date;
   modelUsed: string;
+  isTemporary?: boolean; // Client-side flag for memory-only sessions
 }
 
 /**

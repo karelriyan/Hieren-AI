@@ -127,6 +127,63 @@ export function createChatStream(onGenerate: (send: (data: string) => void) => P
 }
 
 /**
+ * Parse custom chat stream format from /api/chat endpoint
+ * This is different from parseGroqStream which parses Groq API format
+ */
+export async function parseChatStream(
+  response: Response,
+  onChunk: (content: string) => void
+): Promise<void> {
+  if (!response.body) {
+    throw new Error('Response body is null');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      buffer += chunk;
+
+      const lines = buffer.split('\n');
+      buffer = lines[lines.length - 1];
+
+      for (let i = 0; i < lines.length - 1; i++) {
+        const line = lines[i].trim();
+
+        if (!line || line === ':') continue;
+        if (!line.startsWith('data: ')) continue;
+
+        const data = line.slice(6);
+
+        if (data === '[DONE]') {
+          continue;
+        }
+
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.content) {
+            onChunk(parsed.content);
+          }
+          if (parsed.error) {
+            throw new Error(parsed.error);
+          }
+        } catch (e) {
+          console.error('Failed to parse chat stream chunk:', e);
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/**
  * Exponential backoff retry utility for rate-limited requests
  */
 export async function retryWithBackoff<T>(

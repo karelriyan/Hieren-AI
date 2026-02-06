@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth/config';
 import db, { sessions, messages } from '@/lib/db/client';
 import { eq } from 'drizzle-orm';
 
@@ -8,11 +10,12 @@ import { eq } from 'drizzle-orm';
  * DELETE /api/sessions/[id] - Delete session
  */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const sessionId = params.id;
+    const authSession = await getServerSession(authOptions);
 
     const session = await db
       .select()
@@ -27,7 +30,17 @@ export async function GET(
       });
     }
 
-    return new Response(JSON.stringify(session[0]), {
+    const chatSession = session[0];
+
+    // Check ownership (allow if userId is null for backward compatibility)
+    if (chatSession.userId && chatSession.userId !== authSession?.user?.id) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify(chatSession), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -49,6 +62,7 @@ export async function PUT(
 ) {
   try {
     const sessionId = params.id;
+    const authSession = await getServerSession(authOptions);
     const body = await request.json();
     const { title } = body;
 
@@ -62,18 +76,34 @@ export async function PUT(
       );
     }
 
-    const result = await db
-      .update(sessions)
-      .set({ title, lastUpdated: new Date() })
+    // Check ownership first
+    const existingSession = await db
+      .select()
+      .from(sessions)
       .where(eq(sessions.id, sessionId))
-      .returning();
+      .limit(1);
 
-    if (result.length === 0) {
+    if (existingSession.length === 0) {
       return new Response(JSON.stringify({ error: 'Session not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    const chatSession = existingSession[0];
+    if (chatSession.userId && chatSession.userId !== authSession?.user?.id) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Update session
+    const result = await db
+      .update(sessions)
+      .set({ title, lastUpdated: new Date() })
+      .where(eq(sessions.id, sessionId))
+      .returning();
 
     return new Response(JSON.stringify(result[0]), {
       status: 200,
@@ -92,27 +122,42 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const sessionId = params.id;
+    const authSession = await getServerSession(authOptions);
 
-    // Delete associated messages first (cascade)
-    await db.delete(messages).where(eq(messages.sessionId, sessionId));
-
-    // Delete session
-    const result = await db
-      .delete(sessions)
+    // Check ownership first
+    const existingSession = await db
+      .select()
+      .from(sessions)
       .where(eq(sessions.id, sessionId))
-      .returning();
+      .limit(1);
 
-    if (result.length === 0) {
+    if (existingSession.length === 0) {
       return new Response(JSON.stringify({ error: 'Session not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    const chatSession = existingSession[0];
+    if (chatSession.userId && chatSession.userId !== authSession?.user?.id) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Delete associated messages first (cascade)
+    await db.delete(messages).where(eq(messages.sessionId, sessionId));
+
+    // Delete session
+    await db
+      .delete(sessions)
+      .where(eq(sessions.id, sessionId));
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

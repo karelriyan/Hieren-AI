@@ -1,22 +1,48 @@
 import { NextRequest } from 'next/server';
-import db, { messages } from '@/lib/db/client';
-import { eq } from 'drizzle-orm';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth/config';
+import db, { messages, sessions } from '@/lib/db/client';
+import { eq, asc } from 'drizzle-orm';
 
 /**
  * GET /api/sessions/[id]/messages - Get all messages in a session
  * POST /api/sessions/[id]/messages - Save a message to a session
  */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const sessionId = params.id;
+    const authSession = await getServerSession(authOptions);
+
+    // Check session ownership
+    const session = await db
+      .select()
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+      .limit(1);
+
+    if (session.length === 0) {
+      return new Response(JSON.stringify({ error: 'Session not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const chatSession = session[0];
+    if (chatSession.userId && chatSession.userId !== authSession?.user?.id) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     const sessionMessages = await db
       .select()
       .from(messages)
-      .where(eq(messages.sessionId, sessionId));
+      .where(eq(messages.sessionId, sessionId))
+      .orderBy(asc(messages.createdAt));
 
     return new Response(JSON.stringify(sessionMessages), {
       status: 200,
@@ -40,17 +66,66 @@ export async function POST(
 ) {
   try {
     const sessionId = params.id;
+    const authSession = await getServerSession(authOptions);
     const body = await request.json();
     const { role, content, status = 'sent', tokensUsed } = body;
 
-    if (!role || !content) {
+    // More explicit validation with better error messages
+    if (!role) {
+      console.error('❌ Missing role:', { body });
       return new Response(
-        JSON.stringify({ error: 'role and content are required' }),
+        JSON.stringify({ error: 'role is required' }),
         {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         }
       );
+    }
+
+    if (content === undefined || content === null) {
+      console.error('❌ Missing content:', { role, body });
+      return new Response(
+        JSON.stringify({ error: 'content is required' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Allow empty content for assistant messages during streaming (though we shouldn't save them empty)
+    if (content === '' && role === 'assistant') {
+      console.warn('⚠️ Saving assistant message with empty content');
+    }
+
+    console.log('📥 Saving message:', {
+      sessionId,
+      role,
+      contentLength: content?.length || 0,
+      status,
+      userId: authSession?.user?.id
+    });
+
+    // Check session ownership
+    const session = await db
+      .select()
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+      .limit(1);
+
+    if (session.length === 0) {
+      return new Response(JSON.stringify({ error: 'Session not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const chatSession = session[0];
+    if (chatSession.userId && chatSession.userId !== authSession?.user?.id) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const newMessage = {

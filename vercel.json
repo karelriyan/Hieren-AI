@@ -3,13 +3,6 @@
   "devCommand": "npm run dev",
   "framework": "nextjs",
   "regions": ["iad1"],
-  "env": {
-    "GROQ_API_KEY": "@groq-api-key",
-    "TAVILY_API_KEY": "@tavily-api-key",
-    "POSTGRES_URL": "@postgres-url",
-    "POSTGRES_PRISMA_URL": "@postgres-prisma-url",
-    "POSTGRES_URL_NON_POOLING": "@postgres-url-non-pooling"
-  },
   "headers": [
     {
       "source": "/api/:path*",

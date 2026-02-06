@@ -45,3 +45,5 @@ Thumbs.db
 
 # Environment
 .env*.local
+.vercel
+.env.production

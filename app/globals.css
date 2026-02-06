@@ -77,21 +77,60 @@ body {
 
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.5);
+  background-clip: padding-box;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.05);
+}
+
+/* Custom scrollbar for chat messages */
+.chat-scroll {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  max-height: 100%;
+}
+
+.chat-scroll::-webkit-scrollbar {
+  width: 12px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  margin: 4px 0;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.7), rgba(168, 85, 247, 0.7));
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.9), rgba(168, 85, 247, 0.9));
+  background-clip: padding-box;
 }
 
 /* Selection Color */
@@ -186,7 +225,7 @@ button {
   }
 }
 
-/* Responsive Typography */
+/* Responsive Typography & Mobile Glass Effect */
 @media (max-width: 768px) {
   html {
     font-size: 14px;
@@ -194,6 +233,22 @@ button {
 
   .glass-card {
     @apply p-3;
+  }
+
+  /* Stronger glass effect for mobile to improve contrast */
+  .glass-card {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    background-color: rgba(15, 12, 41, 0.85) !important;
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .glass-container {
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    background: rgba(15, 12, 41, 0.9) !important;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
   }
 }
 

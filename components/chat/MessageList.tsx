@@ -43,7 +43,7 @@ export default function MessageList({ messages, isStreaming }: MessageListProps)
             <ChatBubble
               key={message.id}
               role={message.role as 'user' | 'assistant'}
-              content={typeof message.content === 'string' ? message.content : 'Multimodal content'}
+              content={message.content}
               timestamp={message.createdAt}
             />
           ))}

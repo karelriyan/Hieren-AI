@@ -1,10 +1,13 @@
 import { TavilySearchRequest, TavilySearchResult } from '@/types/api';
 
-const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
+// Trim API key to remove any whitespace/newlines from environment variable
+const TAVILY_API_KEY = process.env.TAVILY_API_KEY?.trim();
 const TAVILY_API_URL = 'https://api.tavily.com/search';
 
 if (!TAVILY_API_KEY) {
   console.warn('TAVILY_API_KEY environment variable is not set');
+} else {
+  console.log('✅ Tavily API key loaded, length:', TAVILY_API_KEY.length, 'first 15:', TAVILY_API_KEY.substring(0, 15));
 }
 
 /**
@@ -35,6 +38,13 @@ export async function tavilySearch(query: string, options: {
   };
 
   try {
+    console.log('🌐 Sending to Tavily:', {
+      url: TAVILY_API_URL,
+      query,
+      apiKeyLength: TAVILY_API_KEY.length,
+      apiKeyFirst10: TAVILY_API_KEY.substring(0, 10)
+    });
+
     const response = await fetch(TAVILY_API_URL, {
       method: 'POST',
       headers: {
@@ -43,8 +53,11 @@ export async function tavilySearch(query: string, options: {
       body: JSON.stringify(request),
     });
 
+    console.log('📥 Tavily response status:', response.status);
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
+      console.error('❌ Tavily error response:', error);
       throw new Error(
         `Tavily API error: ${response.status} - ${error.error?.message || 'Unknown error'}`
       );
