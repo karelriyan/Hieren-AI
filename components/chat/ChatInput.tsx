@@ -243,12 +243,28 @@ export default function ChatInput() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               messageId: addedUserMessage.id,
-              attachments: processedAttachments.map(att => ({
-                fileName: att.file.name,
-                fileType: att.type === 'image' ? 'image' : 'document',
-                base64Data: att.base64 || null,
-                metadata: att.text ? { extractedText: att.text, fileSize: att.file.size } : null,
-              })),
+              attachments: processedAttachments.map(att => {
+                // Build metadata based on attachment type
+                let metadata = null;
+                if (att.text) {
+                  // Documents with extracted text (DOCX, XLSX, CSV, TXT)
+                  metadata = { extractedText: att.text, fileSize: att.file.size };
+                } else if (att.images && att.images.length > 0) {
+                  // PDF converted to images
+                  metadata = {
+                    pageCount: att.images.length,
+                    fileSize: att.file.size,
+                    processingMethod: 'vision'
+                  };
+                }
+
+                return {
+                  fileName: att.file.name,
+                  fileType: att.type === 'image' ? 'image' : 'document',
+                  base64Data: att.base64 || null,
+                  metadata,
+                };
+              }),
             }),
           });
         } catch (error) {
