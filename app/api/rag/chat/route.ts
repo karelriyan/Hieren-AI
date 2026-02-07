@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
 /**
  * Health check endpoint
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const ragBackendUrl = getRAGBackendUrl();
     const healthUrl = `${ragBackendUrl}/health`;
