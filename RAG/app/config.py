@@ -5,7 +5,7 @@ Production-Ready Settings with Safety & Resilience
 import os
 from dotenv import load_dotenv
 from llama_index.llms.groq import Groq
-from llama_index.embeddings.cloudflare import CloudflareEmbedding
+from llama_index.embeddings.cloudflare_workersai import CloudflareWorkersAIEmbedding as CloudflareEmbedding
 from llama_index.core import Settings
 from tenacity import retry, stop_after_attempt, wait_exponential
 
