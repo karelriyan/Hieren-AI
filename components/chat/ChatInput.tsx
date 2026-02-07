@@ -7,6 +7,15 @@ import FileUpload from '@/components/ui/FileUpload';
 import { useChatStore } from '@/lib/store/chatStore';
 import { parseChatStream } from '@/lib/api/streaming';
 import { compressImage, validateImage } from '@/lib/utils/imageCompression';
+import { convertPDFToImages, validatePDF } from '@/lib/utils/pdfProcessor';
+import {
+  extractTextFromDocx,
+  extractTextFromExcel,
+  extractTextFromCSV,
+  extractTextFromPlainText,
+  validateDocument,
+  getDocumentType
+} from '@/lib/utils/documentProcessor';
 import { ContentBlock } from '@/types/chat';
 
 /**
@@ -72,39 +81,94 @@ export default function ChatInput() {
     setIsProcessingAttachments(true);
 
     try {
-      // Process attachments (compress images to base64)
-      const processedAttachments: Array<{ file: File; base64: string }> = [];
+      // Process attachments (images, PDFs, and documents)
+      const processedAttachments: Array<{
+        file: File;
+        base64?: string;
+        text?: string;
+        images?: string[]; // For PDF pages as images
+        type: 'image' | 'pdf' | 'docx' | 'xlsx' | 'csv' | 'txt' | 'other'
+      }> = [];
 
       for (const file of attachments) {
         if (file.type.startsWith('image/')) {
-          // Validate image
+          // Process images
           const validation = validateImage(file);
           if (!validation.valid) {
             console.error('Invalid image:', validation.error);
             continue;
           }
 
-          // Compress image to base64
           try {
             const base64 = await compressImage(file, {
               maxSizeMB: 4,
               maxWidthOrHeight: 2048,
               quality: 0.8,
             });
-            processedAttachments.push({ file, base64 });
+            processedAttachments.push({ file, base64, type: 'image' });
           } catch (error) {
             console.error('Failed to compress image:', error);
+          }
+        } else if (file.type === 'application/pdf') {
+          // Process PDF - Convert pages to images for vision
+          const validation = validatePDF(file);
+          if (!validation.valid) {
+            console.error('Invalid PDF:', validation.error);
+            continue;
+          }
+
+          try {
+            const pageImages = await convertPDFToImages(file);
+            processedAttachments.push({ file, images: pageImages, type: 'pdf' });
+          } catch (error) {
+            console.error('Failed to convert PDF to images:', error);
+          }
+        } else {
+          // Process other documents (DOCX, XLSX, CSV, TXT)
+          const validation = validateDocument(file);
+          if (!validation.valid) {
+            console.error('Invalid document:', validation.error);
+            continue;
+          }
+
+          try {
+            const docType = getDocumentType(file);
+            let text = '';
+
+            switch (docType) {
+              case 'docx':
+                text = await extractTextFromDocx(file);
+                processedAttachments.push({ file, text, type: 'docx' });
+                break;
+              case 'xlsx':
+                text = await extractTextFromExcel(file);
+                processedAttachments.push({ file, text, type: 'xlsx' });
+                break;
+              case 'csv':
+                text = await extractTextFromCSV(file);
+                processedAttachments.push({ file, text, type: 'csv' });
+                break;
+              case 'txt':
+                text = await extractTextFromPlainText(file);
+                processedAttachments.push({ file, text, type: 'txt' });
+                break;
+              default:
+                console.warn('Unsupported document type:', file.type);
+            }
+          } catch (error) {
+            console.error('Failed to process document:', error);
           }
         }
       }
 
-      // Build multimodal content if we have images
+      // Build multimodal content if we have attachments
       let userContent: string | ContentBlock[];
 
       if (processedAttachments.length > 0) {
-        // Multimodal: text + images
+        // Multimodal: text + images + documents
         const contentBlocks: ContentBlock[] = [];
 
+        // Add user message text first
         if (message.trim()) {
           contentBlocks.push({
             type: 'text',
@@ -112,13 +176,47 @@ export default function ChatInput() {
           });
         }
 
+        // Add attachments
         for (const attachment of processedAttachments) {
-          contentBlocks.push({
-            type: 'image_url',
-            image_url: {
-              url: attachment.base64,
-            },
-          });
+          if (attachment.type === 'image' && attachment.base64) {
+            // Add regular image
+            contentBlocks.push({
+              type: 'image_url',
+              image_url: {
+                url: attachment.base64,
+              },
+            });
+          } else if (attachment.type === 'pdf' && attachment.images) {
+            // Add PDF pages as images (vision mode)
+            contentBlocks.push({
+              type: 'text',
+              text: `\n\n[PDF Document: ${attachment.file.name} - ${attachment.images.length} page(s)]\n`,
+            });
+
+            // Add each page as an image
+            attachment.images.forEach((imageUrl) => {
+              contentBlocks.push({
+                type: 'image_url',
+                image_url: {
+                  url: imageUrl,
+                },
+              });
+            });
+          } else if (attachment.text) {
+            // Add document text content (DOCX, XLSX, CSV, TXT)
+            const docTypeLabels: Record<string, string> = {
+              docx: 'Word Document',
+              xlsx: 'Excel Spreadsheet',
+              csv: 'CSV Data',
+              txt: 'Text File'
+            };
+            const docTypeLabel = docTypeLabels[attachment.type] || 'Document';
+
+            contentBlocks.push({
+              type: 'text',
+              text: `\n\n[${docTypeLabel}: ${attachment.file.name}]\n${attachment.text}`,
+            });
+          }
         }
 
         userContent = contentBlocks;
@@ -137,7 +235,7 @@ export default function ChatInput() {
 
       const addedUserMessage = addMessage(userMessage);
 
-      // Save attachments metadata to database if authenticated
+      // Save attachments metadata to database
       if (processedAttachments.length > 0 && addedUserMessage.id) {
         try {
           await fetch('/api/attachments', {
@@ -147,8 +245,9 @@ export default function ChatInput() {
               messageId: addedUserMessage.id,
               attachments: processedAttachments.map(att => ({
                 fileName: att.file.name,
-                fileType: 'image',
-                base64Data: att.base64,
+                fileType: att.type === 'image' ? 'image' : 'document',
+                base64Data: att.base64 || null,
+                metadata: att.text ? { extractedText: att.text, fileSize: att.file.size } : null,
               })),
             }),
           });
@@ -263,21 +362,35 @@ export default function ChatInput() {
       {/* Attachment Previews */}
       {attachments.length > 0 && (
         <div className="flex gap-2 flex-wrap">
-          {attachments.map((file, index) => (
-            <GlassCard
-              key={index}
-              className="px-3 py-2 text-sm flex items-center gap-2"
-            >
-              <span>{file.name}</span>
-              <button
-                type="button"
-                onClick={() => removeAttachment(index)}
-                className="text-red-400 hover:text-red-300 font-bold ml-2"
+          {attachments.map((file, index) => {
+            // Get appropriate icon for file type
+            const getFileIcon = () => {
+              if (file.type.startsWith('image/')) return '🖼️';
+              if (file.type === 'application/pdf') return '📄';
+              if (file.name.match(/\.(docx?|doc)$/i)) return '📝';
+              if (file.name.match(/\.(xlsx?|xls)$/i)) return '📊';
+              if (file.name.match(/\.csv$/i)) return '📈';
+              if (file.name.match(/\.(txt|md)$/i)) return '📃';
+              return '📎';
+            };
+
+            return (
+              <GlassCard
+                key={index}
+                className="px-3 py-2 text-sm flex items-center gap-2"
               >
-                ✕
-              </button>
-            </GlassCard>
-          ))}
+                {getFileIcon()}
+                <span className="max-w-[200px] truncate">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(index)}
+                  className="text-red-400 hover:text-red-300 font-bold ml-2"
+                >
+                  ✕
+                </button>
+              </GlassCard>
+            );
+          })}
         </div>
       )}
 

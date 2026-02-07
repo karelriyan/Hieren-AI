@@ -17,7 +17,14 @@ interface FileUploadProps {
 export default function FileUpload({
   onFilesSelected,
   onClose,
-  acceptedTypes = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.docx', '.doc'],
+  acceptedTypes = [
+    '.jpg', '.jpeg', '.png', '.gif', '.webp',  // Images
+    '.pdf',                                      // PDF
+    '.docx', '.doc',                            // Word
+    '.xlsx', '.xls',                            // Excel
+    '.csv',                                      // CSV
+    '.txt', '.md',                              // Text files
+  ],
   maxSize = 20,
 }: FileUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,7 +127,7 @@ export default function FileUpload({
             </svg>
             <p className="text-white font-medium mb-1">Drag files here or click to browse</p>
             <p className="text-sm text-gray-400">
-              Supported: Images (JPG, PNG, GIF), Documents (PDF, DOCX)
+              Supported: Images, PDF, Word, Excel, CSV, Text files
             </p>
             <p className="text-xs text-gray-500 mt-2">Max size: {maxSize}MB</p>
           </div>
