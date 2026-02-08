@@ -5,7 +5,7 @@ Production-Ready Settings with Safety & Resilience
 import os
 from dotenv import load_dotenv
 from llama_index.llms.groq import Groq
-from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -26,10 +26,10 @@ def init_settings():
         max_tokens=2048
     )
 
-    # 2. Embedding: OpenAI (text-embedding-3-small)
-    embed_model = OpenAIEmbedding(
-        model="text-embedding-3-small",
-        api_key=os.getenv("OPENAI_API_KEY")
+    # 2. Embedding: Local HuggingFace (BAAI/bge-small-en-v1.5)
+    # Runs locally with PyTorch - No API needed, completely free
+    embed_model = HuggingFaceEmbedding(
+        model_name="BAAI/bge-small-en-v1.5"
     )
 
     # Global Settings
