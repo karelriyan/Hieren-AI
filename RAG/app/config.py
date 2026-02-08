@@ -5,7 +5,6 @@ Production-Ready Settings with Safety & Resilience
 import os
 from dotenv import load_dotenv
 from llama_index.llms.groq import Groq
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -26,14 +25,28 @@ def init_settings():
         max_tokens=2048
     )
 
-    # 2. Embedding: Local HuggingFace (BAAI/bge-large-en-v1.5)
-    # Runs locally with PyTorch - No API needed, completely free
-    # Outputs 1024 dimensions to match Pinecone index
-    # Optimized: 64 batch size for 3-4x faster processing
-    embed_model = HuggingFaceEmbedding(
-        model_name="BAAI/bge-large-en-v1.5",
-        embed_batch_size=64  # Increased from default 10
-    )
+    # 2. Embedding: Auto-detect based on environment
+    # Railway/Production: Use Cloudflare Workers AI (fast, API-based, no build timeout)
+    # Local Development: Use HuggingFace (free, runs locally)
+    is_railway = os.getenv("RAILWAY_ENVIRONMENT") is not None
+
+    if is_railway or os.getenv("USE_CLOUDFLARE_EMBEDDING") == "true":
+        # Cloudflare Workers AI - Fast deployment, no model download
+        from llama_index.embeddings.cloudflare_workersai import CloudflareEmbedding
+        embed_model = CloudflareEmbedding(
+            model_name="@cf/baai/bge-large-en-v1.5",  # 1024 dimensions
+            account_id=os.getenv("CLOUDFLARE_ACCOUNT_ID"),
+            api_token=os.getenv("CLOUDFLARE_API_TOKEN")
+        )
+        print("✅ Using Cloudflare Workers AI embedding (Production)")
+    else:
+        # Local HuggingFace - Runs locally with PyTorch
+        from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+        embed_model = HuggingFaceEmbedding(
+            model_name="BAAI/bge-large-en-v1.5",  # 1024 dimensions
+            embed_batch_size=64  # Optimized batch size
+        )
+        print("✅ Using HuggingFace embedding (Local)")
 
     # Global Settings
     Settings.llm = llm
