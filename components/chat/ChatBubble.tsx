@@ -66,6 +66,9 @@ export default function ChatBubble({
                 {children}
               </blockquote>
             ),
+            hr: () => (
+              <hr className="border-t border-white/10 my-3" />
+            ),
             a: ({ href, children }) => (
               <a
                 href={href}
@@ -129,6 +132,9 @@ export default function ChatBubble({
                     <blockquote className="border-l-4 border-blue-400 pl-4 italic text-gray-300 my-2">
                       {children}
                     </blockquote>
+                  ),
+                  hr: () => (
+                    <hr className="border-t border-white/10 my-3" />
                   ),
                   a: ({ href, children }) => (
                     <a

@@ -5,6 +5,13 @@ import { parseGroqStream, createChatStream } from '@/lib/api/streaming';
 export const runtime = 'edge';
 export const maxDuration = 60;
 
+interface RAGCitation {
+  document: string;
+  page?: string;
+  relevance?: number;
+  url?: string;
+}
+
 /**
  * System prompt for Hieren AI - Renewable Energy Specialist
  */
@@ -15,6 +22,7 @@ IDENTITAS & SPESIALISASI:
 - Dikembangkan oleh: Tim AI Hieren
 - Spesialisasi: Renewable Energy (Energi Terbarukan)
 - Bahasa: Indonesia dan Inggris
+- Enhanced dengan RAG (Retrieval-Augmented Generation) untuk akurasi teknis
 
 AREA KEAHLIAN ANDA:
 1. Solar Energy (Energi Surya) - panel surya, PLTS, solar cell
@@ -56,8 +64,73 @@ GAYA KOMUNIKASI:
 Selalu ingat: Anda adalah spesialis renewable energy dari Hieren, bukan general-purpose AI.`;
 
 /**
- * Chat streaming endpoint
- * Handles incoming chat messages and streams AI responses
+ * Detect if query should use RAG
+ */
+function shouldUseRAG(text: string): boolean {
+  const technicalKeywords = [
+    'spesifikasi', 'specification', 'error', 'fault', 'install', 'setup',
+    'troubleshoot', 'tegangan', 'voltage', 'amp', 'watt', 'power', 'panel',
+    'inverter', 'battery', 'manual', 'handbook', 'technical', 'teknis',
+    'cara', 'how to', 'perhitungan', 'calculation', 'solar', 'turbin',
+    'turbine', 'wind', 'hydro', 'energi', 'energy', 'plts', 'pltb',
+  ];
+  const lowerText = text.toLowerCase();
+  return technicalKeywords.some((keyword) => lowerText.includes(keyword));
+}
+
+/**
+ * Query RAG backend and return response with citations
+ */
+async function queryRAGBackend(text: string, sessionId?: string): Promise<{
+  response: string | null;
+  citations: RAGCitation[];
+}> {
+  try {
+    const ragUrl = process.env.RAG_BACKEND_URL || 'http://localhost:8000';
+    const res = await fetch(`${ragUrl}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, user_id: sessionId || 'web_user' }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'success') {
+        return {
+          response: data.response,
+          citations: data.citations || [],
+        };
+      }
+    }
+  } catch (error) {
+    console.warn('RAG backend query failed:', error);
+  }
+  return { response: null, citations: [] };
+}
+
+/**
+ * Format citations as markdown for appending to streamed response
+ */
+function formatCitationsMarkdown(citations: RAGCitation[]): string {
+  if (!citations || citations.length === 0) return '';
+
+  let md = '\n\n---\n**Referensi:**\n';
+  for (const c of citations) {
+    const name = c.document.replace(/\.pdf$/i, '');
+    const page = c.page ? ` (hal. ${c.page})` : '';
+    const score = c.relevance ? ` — relevansi ${Math.round(c.relevance * 100)}%` : '';
+    if (c.url) {
+      md += `- [${name}](${c.url})${page}${score}\n`;
+    } else {
+      md += `- ${name}${page}${score}\n`;
+    }
+  }
+  return md;
+}
+
+/**
+ * Chat streaming endpoint with RAG integration
  */
 export async function POST(request: NextRequest) {
   try {
@@ -74,11 +147,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Add system prompt at the beginning
+    // Get last user message for RAG check
+    const lastUserMessage = [...messages].reverse()
+      .find((m: { role: string }) => m.role === 'user');
+    const userText = typeof lastUserMessage?.content === 'string'
+      ? lastUserMessage.content
+      : '';
+
+    // Try RAG if query is technical
+    let ragContext = '';
+    let citations: RAGCitation[] = [];
+    const useRAG = userText && shouldUseRAG(userText) &&
+      process.env.RAG_BACKEND_URL !== 'disabled';
+
+    if (useRAG) {
+      const ragResult = await queryRAGBackend(userText, _sessionId);
+      if (ragResult.response) {
+        ragContext = `\n\n[Dari Knowledge Base - Informasi Teknis]\n${ragResult.response}\n\nGunakan informasi dari knowledge base di atas sebagai referensi utama untuk menjawab. Jawab dengan lengkap dan akurat.`;
+        citations = ragResult.citations;
+      }
+    }
+
+    // Add system prompt with optional RAG context
     const messagesWithSystem = [
       {
         role: 'system' as const,
-        content: HIEREN_SYSTEM_PROMPT,
+        content: HIEREN_SYSTEM_PROMPT + ragContext,
       },
       ...messages,
     ];
@@ -178,6 +272,11 @@ export async function POST(request: NextRequest) {
               }
             }
           }
+        }
+
+        // Append citations at the end of the response
+        if (citations.length > 0) {
+          send(formatCitationsMarkdown(citations));
         }
       } catch (error) {
         console.error('Streaming error:', error);

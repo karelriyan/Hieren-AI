@@ -50,8 +50,13 @@ async def chat_endpoint(request: ChatRequest):
 
     try:
         engine = get_engine()
-        response = engine.process_query(request.text)
-        return {"response": str(response), "status": "success"}
+        result = engine.process_query(request.text)
+        return {
+            "response": result["response"],
+            "citations": result.get("citations", []),
+            "source": result.get("source", "rag"),
+            "status": "success"
+        }
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal System Error: {str(e)}")

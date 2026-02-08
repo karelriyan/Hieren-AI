@@ -83,8 +83,29 @@ Category (Just one word):"""
         return "TECHNICAL"
 
 
-def process_query(query: str):
-    """Main query processing pipeline"""
+def extract_citations(source_nodes) -> list:
+    """Extract citation metadata from LlamaIndex source nodes"""
+    citations = []
+    seen = set()
+    for node in source_nodes:
+        meta = node.metadata or {}
+        file_name = meta.get("file_name", "Unknown Document")
+        page = meta.get("page_label") or meta.get("page_number")
+        score = round(node.score, 3) if node.score else None
+        # Deduplicate by file_name + page
+        key = f"{file_name}:{page}"
+        if key in seen:
+            continue
+        seen.add(key)
+        citation = {"document": file_name, "relevance": score}
+        if page:
+            citation["page"] = str(page)
+        citations.append(citation)
+    return citations
+
+
+def process_query(query: str) -> dict:
+    """Main query processing pipeline. Returns dict with response and citations."""
     # 1. Routing
     route = semantic_router(query)
     print(f"🚦 Route: {route}")
@@ -93,12 +114,14 @@ def process_query(query: str):
         try:
             results = tavily.search(query, search_depth="basic")['results']
             context = "\n".join([f"- {r['content']}" for r in results[:3]])
-            return llm.complete(f"Jawab berdasarkan data web ini:\n{context}\n\nPertanyaan: {query}")
+            answer = llm.complete(f"Jawab berdasarkan data web ini:\n{context}\n\nPertanyaan: {query}")
+            web_sources = [{"document": r.get("title", r["url"]), "url": r["url"]} for r in results[:3]]
+            return {"response": str(answer), "citations": web_sources, "source": "web"}
         except Exception as e:
-            return f"Gagal akses data pasar: {str(e)}"
+            return {"response": f"Gagal akses data pasar: {str(e)}", "citations": [], "source": "error"}
 
     elif route == "ACTION":
-        return "⚠️ [MOCK] Perintah IoT dikirim ke MQTT Broker."
+        return {"response": "⚠️ [MOCK] Perintah IoT dikirim ke MQTT Broker.", "citations": [], "source": "action"}
 
     else:  # TECHNICAL
         # 2. Query Transformation (Improvement)
@@ -107,7 +130,9 @@ def process_query(query: str):
 
         # 3. RAG Execution with Retry
         try:
-            return RAG_ENGINE.query(refined_query)
+            result = RAG_ENGINE.query(refined_query)
+            citations = extract_citations(result.source_nodes) if result.source_nodes else []
+            return {"response": str(result), "citations": citations, "source": "rag"}
         except Exception as e:
             print(f"❌ RAG Error: {e}")
-            return "Maaf, sistem database sedang sibuk. Silakan coba sesaat lagi."
+            return {"response": "Maaf, sistem database sedang sibuk. Silakan coba sesaat lagi.", "citations": [], "source": "error"}
