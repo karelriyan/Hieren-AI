@@ -5,7 +5,7 @@ Production-Ready Settings with Safety & Resilience
 import os
 from dotenv import load_dotenv
 from llama_index.llms.groq import Groq
-from llama_index.embeddings.cloudflare_workersai import CloudflareEmbedding
+from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.core import Settings
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -26,11 +26,10 @@ def init_settings():
         max_tokens=2048
     )
 
-    # 2. Embedding: Cloudflare (BGE-M3)
-    embed_model = CloudflareEmbedding(
-        model_name="@cf/baai/bge-m3",
-        account_id=os.getenv("CLOUDFLARE_ACCOUNT_ID"),
-        api_token=os.getenv("CLOUDFLARE_API_TOKEN")
+    # 2. Embedding: OpenAI (text-embedding-3-small)
+    embed_model = OpenAIEmbedding(
+        model="text-embedding-3-small",
+        api_key=os.getenv("OPENAI_API_KEY")
     )
 
     # Global Settings

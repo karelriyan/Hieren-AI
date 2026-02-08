@@ -58,12 +58,18 @@ def build_index(data_dir="data"):
         original_text = doc.text
         cleaned_text = normalize_units(original_text)
 
-        # Inject Basic Metadata
-        doc.text = cleaned_text
-        doc.metadata["source_type"] = "technical_manual" if "manual" in \
-            doc.metadata.get("file_name", "").lower() else "general"
-        doc.metadata["processed_at"] = "v2.0"
-        cleaned_docs.append(doc)
+        # Create new metadata dict
+        new_metadata = dict(doc.metadata)
+        new_metadata["source_type"] = "technical_manual" if "manual" in \
+            new_metadata.get("file_name", "").lower() else "general"
+        new_metadata["processed_at"] = "v2.0"
+
+        # Create new Document with cleaned text and updated metadata
+        cleaned_doc = Document(
+            text=cleaned_text,
+            metadata=new_metadata
+        )
+        cleaned_docs.append(cleaned_doc)
 
     # 4. Upload to Pinecone (StorageContext handles chunking automatically via Settings)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
