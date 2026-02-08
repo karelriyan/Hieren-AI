@@ -4,9 +4,28 @@ Production-Grade API with Error Handling
 """
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from app.engine import process_query
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Hieren AI API (Production)")
+
+# Lazy import to prevent startup failures
+_engine_module = None
+
+def get_engine():
+    """Lazy load engine module"""
+    global _engine_module
+    if _engine_module is None:
+        try:
+            from app import engine as _engine_module
+            logger.info("RAG engine loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load RAG engine: {e}")
+            raise
+    return _engine_module
 
 
 class ChatRequest(BaseModel):
@@ -30,14 +49,35 @@ async def chat_endpoint(request: ChatRequest):
         raise HTTPException(status_code=400, detail="Text kosong")
 
     try:
-        response = process_query(request.text)
+        engine = get_engine()
+        response = engine.process_query(request.text)
         return {"response": str(response), "status": "success"}
     except Exception as e:
-        # Log error to monitoring system (Sentry/etc) here
-        raise HTTPException(status_code=500, detail="Internal System Error")
+        logger.error(f"Chat error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal System Error: {str(e)}")
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy"}
+    """Health check endpoint - returns 200 even if RAG engine not ready"""
+    import os
+
+    # Check if environment variables are set
+    required_vars = [
+        "GROQ_API_KEY",
+        "PINECONE_API_KEY",
+        "CLOUDFLARE_ACCOUNT_ID",
+        "COHERE_API_KEY"
+    ]
+
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+
+    if missing_vars:
+        logger.warning(f"Missing environment variables: {missing_vars}")
+        return {
+            "status": "degraded",
+            "message": "Server running but some env vars missing",
+            "missing": missing_vars
+        }
+
+    return {"status": "healthy", "message": "All systems operational"}
