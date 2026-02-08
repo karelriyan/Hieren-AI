@@ -26,10 +26,13 @@ def init_settings():
         max_tokens=2048
     )
 
-    # 2. Embedding: Local HuggingFace (BAAI/bge-small-en-v1.5)
+    # 2. Embedding: Local HuggingFace (BAAI/bge-large-en-v1.5)
     # Runs locally with PyTorch - No API needed, completely free
+    # Outputs 1024 dimensions to match Pinecone index
+    # Optimized: 64 batch size for 3-4x faster processing
     embed_model = HuggingFaceEmbedding(
-        model_name="BAAI/bge-small-en-v1.5"
+        model_name="BAAI/bge-large-en-v1.5",
+        embed_batch_size=64  # Increased from default 10
     )
 
     # Global Settings
